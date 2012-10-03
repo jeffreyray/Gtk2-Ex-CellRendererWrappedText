@@ -1,15 +1,20 @@
 package Gtk2::Ex::CellRendererWrappedText::TextView;
 
-our $VERSION = 0.01;
-our $AUTHORITY = 'cpan:JHALLOCK';
-
-use Glib qw(TRUE FALSE);
 use Gtk2;
 use Gtk2::Gdk::Keysyms;
 
 use Glib::Object::Subclass
 	Gtk2::TextView::,
 	interfaces => [ 'Gtk2::CellEditable' ],
+	properties => [
+		Glib::ParamSpec->boolean(
+			'editing-cancelled',
+			'Editing Cancelled',
+			'Indicates whether editing on the cell has been canceled.',
+			0,
+			[qw( readable writable )],
+		)
+	],
 	;
 	
 sub set_text {
@@ -19,12 +24,12 @@ sub set_text {
 sub get_text {
 	my ( $w ) = @_;
 	my $buffer = $w->get_buffer;
-	$buffer->get_text ( $buffer->get_start_iter,  $buffer->get_end_iter, TRUE );
+	$buffer->get_text ( $buffer->get_start_iter,  $buffer->get_end_iter, 1 );
 }
 
 
+
 package Gtk2::Ex::CellRendererWrappedText;
-use Glib qw(TRUE FALSE);
 
 use Glib::Object::Subclass
 	Gtk2::CellRendererText::,
@@ -37,7 +42,7 @@ sub START_EDITING {
 	my $e = Gtk2::Ex::CellRendererWrappedText::TextView->new;
 	$e->set( 'wrap-mode', $cell->get( 'wrap-mode' ) );
 	$e->get_buffer->set_text( $cell->get( 'text' ) );
-	$e->set_border_width( $cell->get( 'ypad' ) );
+	#$e->set_border_width( $cell->get( 'ypad' ) );
 	$e->set_size_request( $cell_area->width - $cell->get( 'ypad' ) , $cell_area->height );
 	$e->grab_focus;
 
@@ -45,24 +50,22 @@ sub START_EDITING {
 		my ( $widget, $event ) = @_;
 		
 		# if user presses Ctrl + enter/return then send edited signal
-		if ( ( $event->keyval == $Gtk2::Gdk::Keysyms{Return}
-			||  $event->keyval == $Gtk2::Gdk::Keysyms{KP_Enter} )
-		    and $event->state & 'control-mask'
+		if ( ( $event->keyval == $Gtk2::Gdk::Keysyms{Return} ||  $event->keyval == $Gtk2::Gdk::Keysyms{KP_Enter} ) and $event->state & 'control-mask'
 			) {
 			$cell->signal_emit( edited => $path, $widget->get_text);
 			$widget->destroy;
-			return TRUE;
+			return 1;
 		}
 		
 		# if user presses esc - cancel editing
 		elsif ( $event->keyval == $Gtk2::Gdk::Keysyms{Esc} ) {
 			$widget->destroy;
-			return TRUE;
+			return 1;
 		}
-		return FALSE;
+		return 0;
 	});
     
-    # send edited signal on focus out
+        # send edited signal on focus out
 	$e->signal_connect( 'focus-out-event' => sub {
 		my $widget = shift;
 		$cell->signal_emit( edited => $path, $widget->get_text );
@@ -74,8 +77,9 @@ sub START_EDITING {
 
 sub RENDER {
 	my $cell = shift;
-	my ($event, $widget, $path, $background_area, $cell_area, $flags) = @_;
-	$cell->set( 'wrap-width', $cell_area->width - $cell->get( 'ypad' ) );
+	my ($event, $widget, $path, $background_area, $cell_area, $expose_area, $flags) = @_;
+	
+	$cell->set( 'wrap-width', $cell_area->width - $cell->get( 'ypad' )  );
 	$cell->SUPER::RENDER( @_ );
 }
 
@@ -120,67 +124,66 @@ text entries in a TreeView
  
  $view->append_column ($column);
  
-
 =head1 WIDGET HIERARCHY
 
-  Glib::Object
-  +----Glib::InitiallyUnowned
-       +----Gtk2::Object
-            +----Gtk2::CellRenderer
-                 +----Gtk2::CellRendererText
-                      +----Gtk2::Ex::CellRendererWrappedText
+=over 4
 
+=item Glib::Object
 
+=item +-- Glib::InitiallyUnowned
+
+=item ....+-- Gtk2::Object
+
+=item ........+-- Gtk2::CellRenderer
+
+=item ............+-- Gtk2::CellRendererText
+
+=item ................+ Gtk2::Ex::CellRendererWrappedText
+
+=back
 
 =head1 DESCRIPTION
 
-C<Gtk2::Ex::CellRendererWrappedText> is a L<Gtk2::CellRendererText> that
-automatically updates the wrap-width of the of the renderer so that the text
-always fills (or shrinks to match) the available area.
+Gtk2::Ex::CellRendererWrappedText is a Gtk2::CellRendererText that
+automatically updates the wrap-width of the of the renderer when it
+is resized so that it always expands or shrinks to the avaialble area.
 
-C<Gtk2::Ex::CellRendererWrappedText> also handles editing of strings that span
-multiple lines.  L<Gtk2::CellRendererText> only displays multi-line strings on
-one line while in edit mode, regardless of the wrap-wdith of the renderer.
+This module also handles editing of strings that span multiple lines by
+using a TextView instead of an Entry as CellRendererText does.
 
 Pressing <Esc> whil in edit mode cancels the edit. Pressing <Enter>  moves to
-the next line. Pressing <Ctrl+Enter> or focusing out of the render finishes
-editing and emits the 'edited' signal on the renderer. 
+the next line. Pressing <Ctrl+Enter> or focusing out of the renderer finishes
+editing and emits the 'edited' signal.
 
+=head1 BUGS & CAVEATS
 
-=head1 SEE ALSO
+Using this module produces this warning:
 
-L<Gtk2::CellRendererText>,
-L<Gtk2::Ex::DateEntry::CellRenderer>, L<Gtk2::Ex::TimeEntry::CellRenderer>
+    GLib-GObject-CRITICAL **: Object class Gtk2__Ex__CellRendererWrappedText__TextView
+    doesn't implement property 'editing-canceled' from interface 'GtkCellEditable' at ...
+
+This is only a warning, and a known issue with Gtk+ and the Gtk2-Perl bindings that will not
+affect behaviour of the widget.
+
+See this post for more information:
+
+L<http://old.nabble.com/Having-issues-porting-a-CellRenderer---CellEditable-to-Gtk3-td34129064.html>
 
 =head1 AUTHOR
 
-Jeffrey Hallock  <jeffrey dot hallock @ gmail dot com>.
+Jeffrey Ray Hallock E<lt>jeffrey.hallock at gmail dot comE<gt>
 
 Some code adapted from Muppet's customrenderer.pl script included in the
 Gtk2 examples directory.
 
-=head1 CAVEATS & BUGS
+=head1 COPYRIGHT & LICENSE
 
-None known. Please send bugs to <jeffrey dot hallock @ gmail dot com>.
-Patches and suggestions welcome.
+Copyright (c) 2010-2012 Jeffrey Ray Hallock.
+    
+    This is free software, licensed under:
 
-
-=head1 LICENSE
-
-Gtk2-Ex-CellRendererText is Copyright 2010 Jeffrey Ray Hallock
-
-Gtk2-Ex-CellRendererText is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by the
-Free Software Foundation; either version 3, or (at your option) any later
-version.
-
-Gtk2-Ex-CellRendererText is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-
-You should have received a copy of the GNU General Public License along with
-Gtk2-Ex-DateEntry.  If not, see L<http://www.gnu.org/licenses/>.
-
+    The Artistic License 2.0 (GPL Compatible)
+    
 =cut
+
 

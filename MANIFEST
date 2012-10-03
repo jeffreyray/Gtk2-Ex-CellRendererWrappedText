@@ -1,6 +1,0 @@
-Changes
-Makefile.PL
-MANIFEST
-README
-example/01_cellrenderer_wrapped_text.t
-lib/Gtk2/Ex/CellRendererWrappedText.pm
